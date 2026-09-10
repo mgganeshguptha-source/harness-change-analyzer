@@ -1,0 +1,141 @@
+# =====================================================================
+# IMPACT ANALYSIS + PLAN  (harness-change-analyzer, human-triggered)
+# =====================================================================
+# Model (Phase 1): analyze -> plan -> human review -> developer runs
+# SDLC-Harness manually per repo. No auto-orchestration.
+#
+# HOW A DEVELOPER USES THIS
+#   1. Branch from main:   harness-change/<story-id>   (e.g. harness-change/BCBSM-1234)
+#   2. Commit the story:   stories/<story-id>/story.md (frontmatter + prose)
+#   3. Actions -> impact-analysis -> Run workflow -> pick THAT branch.
+#   4. The workflow writes PLAN.md + per-repo stories + changeset BACK to the
+#      same branch, and uploads them as artifacts.
+#   5. Review, then run SDLC-Harness per repo (manual) per PLAN.md.
+#   The branch is scratch — discard it when done. It is never merged to main.
+#
+# CODE PINNING (@v1 approach)
+#   main is protected; developers only touch their harness-change/* branch. The
+#   TOOL CODE that runs is checked out at `tool_ref` (default v1), NOT from the
+#   developer's branch — so tool changes on main don't affect developers until a
+#   maintainer cuts v2. Only the STORY is read from the developer's branch.
+# =====================================================================
+name: impact-analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      story_id:
+        description: "Story ID; reads stories/<id>/story.md on this branch"
+        required: true
+      tool_ref:
+        description: "Pinned analyzer version to run (tag/branch). Default v1."
+        required: false
+        default: "v1"
+      reasoning:
+        description: "Reasoning backend: copilot (real) or mock"
+        required: false
+        default: "copilot"
+        type: choice
+        options: [copilot, mock]
+
+permissions:
+  contents: write         # to commit results back to the harness-change/* branch
+
+jobs:
+  analyze-and-plan:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. STORY — from the branch the developer selected to run on.
+      - name: Checkout story branch
+        uses: actions/checkout@v4
+        with:
+          path: story-branch          # story lives here (developer's branch)
+
+      # 2. TOOL CODE — pinned at tool_ref (default v1), independent of the branch.
+      - name: Checkout analyzer tool (pinned)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tool_ref }}
+          path: tool                  # analyzer code runs from here
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r tool/requirements.txt
+
+      # 3. ANALYZE — read the story from the branch, using pinned tool code.
+      #    Registry also comes from the pinned tool (single source of truth).
+      - name: Analyze
+        env:
+          # READ access to candidate repos + Copilot reasoning. Same token the
+          # engine uses; has repo access.
+          GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          HARNESS_REASONING: ${{ inputs.reasoning }}
+        run: |
+          mkdir -p story-branch/change-sets
+          python tool/impact_analysis/run.py analyze \
+            --story-id "${{ inputs.story_id }}" \
+            --story-source repo \
+            --stories-root story-branch/stories \
+            --owner "${{ github.repository_owner }}" \
+            --registry tool/config/service-registry.yaml \
+            --out "story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml"
+
+      # 4. HUMAN GATE NOTE:
+      #    In the strict flow, a human approves the change set before plan. For
+      #    the Phase-1 artifact model we run plan immediately so reviewers get the
+      #    full package (plan + per-repo stories) in one go; the human approves by
+      #    choosing to run SDLC-Harness afterwards. Set status APPROVED so plan
+      #    proceeds in CI (the analyzer refuses to plan an unapproved set).
+      - name: Mark change set approved-for-plan (CI)
+        env:
+          CS_PATH: "story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml"
+        run: |
+          python - <<'PY'
+          import yaml, os
+          p = os.environ["CS_PATH"]
+          d = yaml.safe_load(open(p))
+          d["change_set"]["status"] = "APPROVED"
+          yaml.safe_dump(d, open(p, "w"), sort_keys=False)
+          print("status set APPROVED for plan generation")
+          PY
+
+      # 5. PLAN — per-repo stories + PLAN.md, written under the story branch.
+      - name: Plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          HARNESS_REASONING: ${{ inputs.reasoning }}
+        run: |
+          python tool/impact_analysis/run.py plan \
+            --change-set "story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml" \
+            --registry tool/config/service-registry.yaml \
+            --stories-root story-branch/stories \
+            --reasoning "${{ inputs.reasoning }}"
+
+      # 6. COMMIT results back to the developer's branch (scratch branch).
+      - name: Commit results to the story branch
+        working-directory: story-branch
+        run: |
+          git config user.name "harness-change-analyzer"
+          git config user.email "harness-bot@users.noreply.github.com"
+          git add change-sets/ stories/
+          if git diff --cached --quiet; then
+            echo "no changes to commit"
+          else
+            git commit -m "analysis+plan for ${{ inputs.story_id }} [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      # 7. ARTIFACTS — downloadable without checking out the branch.
+      - name: Upload plan + stories + change set
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-${{ inputs.story_id }}
+          path: |
+            story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml
+            story-branch/stories/${{ inputs.story_id }}/per-repo/

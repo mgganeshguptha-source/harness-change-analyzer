@@ -1,0 +1,9 @@
+# Control Plane dependencies.
+# The core (registry, DAG, contract gate, orchestrator, mock analyzer) needs
+# only PyYAML. The real reasoning backend additionally needs the Copilot SDK.
+
+pyyaml>=6.0
+
+# Real reasoning backend (only needed when HARNESS_REASONING=copilot):
+# install the same SDK the engine uses, and have the Copilot CLI authed.
+# github-copilot-sdk

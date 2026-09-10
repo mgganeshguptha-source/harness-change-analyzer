@@ -1,0 +1,60 @@
+# =====================================================================
+# CHANGE SET SCHEMA  (Control Plane)
+# =====================================================================
+# The Change Set is the OUTPUT of impact analysis and the artifact a human
+# APPROVES. The cross-repo manifest is generated FROM an approved Change Set;
+# humans do not hand-author the manifest.
+#
+# This file documents the shape. Validation lives in impact_analysis/
+# change_set.py. Fields marked (ai) are produced by the analyzer;
+# (human) are set/confirmed at approval.
+# =====================================================================
+
+change_set:
+  story: BCBSM-1234                 # (input)  business story ID, unique
+  title: ""                        # (input)  story title
+  status: PROPOSED                 # PROPOSED | APPROVED | REJECTED  (human)
+
+  analysis:                        # (ai)
+    engine: copilot-sdk            # reasoning engine used
+    confidence: 0                  # 0-100; low confidence => human clarification
+    analyzed_refs: {}              # repo -> ref actually read (audit)
+    evidence: []                   # free-form notes the AI used to decide
+
+  provider:                        # (ai, human-confirmable)
+    repo: ""                       # repo that OWNS the changing contract
+    contract: ""                   # contract file path within that repo
+    contract_version: ""           # target version this change produces
+
+  consumers:                       # (ai, human-editable list)
+    # - repo: provider-service
+    #   evidence: "references Member API endpoint /members/{id}/language"
+    []
+
+  potentially_affected:            # (ai)  flagged, NOT auto-included
+    # - repo: claims-service
+    #   reason: "references Member API but no use of the impacted endpoint found"
+    []
+
+  dependencies:                    # (ai)  provider -> consumer edges
+    # - from: member-service
+    #   to: provider-service
+    []
+
+  contract_change:                 # (ai)
+    type: unknown                  # backward_compatible | breaking | unknown
+
+  options:                         # (human)  carried into the manifest
+    merge: manual                  # Phase 1: manual only
+    contract_gate: required        # required | warn | off
+    parallel: true                 # independent consumers run concurrently
+
+# =====================================================================
+# VALIDATION RULES (enforced by change_set.py)
+# - story present and non-empty
+# - provider.repo resolves in service-registry
+# - every consumers[].repo resolves in service-registry
+# - every dependencies edge references repos in provider+consumers
+# - status must be APPROVED before a manifest can be generated
+# - confidence >= threshold OR status manually set APPROVED by a human
+# =====================================================================

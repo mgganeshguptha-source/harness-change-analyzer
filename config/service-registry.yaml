@@ -1,0 +1,54 @@
+# =====================================================================
+# SERVICE REGISTRY  (Control Plane)
+# =====================================================================
+# The repo UNIVERSE the Impact Analyzer may search. Repo identity only —
+# NOT per-run state. The branch to analyze is NOT here: it comes from the
+# story input per run (target_branch), so parallel releases can run at
+# once and the registry changes only when a repo is added/removed.
+#
+# Each repo declares:
+#   stream         PM | VoC   — which development stream it belongs to.
+#                  The analyzer searches only repos matching the story's
+#                  stream (a PM story never pulls in a VoC repo).
+#   stack          backend | angular-frontend | mobile-frontend
+#   contract_path  path to the OpenAPI contract within the repo.
+# =====================================================================
+
+defaults:
+  contract_path: "api/{service}.yaml"
+
+repos:
+  # ---- PM stream ----
+  member-service:
+    stream: PM
+    stack: backend
+    contract_path: "api/member.yaml"
+
+  provider-service:
+    stream: PM
+    stack: backend
+    contract_path: "api/provider.yaml"
+
+  provider-search:
+    stream: PM
+    stack: angular-frontend
+    contract_path: "api/provider-search.yaml"
+
+  # ---- VoC stream ----
+  survey-service:
+    stream: VoC
+    stack: backend
+    contract_path: "api/survey.yaml"
+
+  feedback-service:
+    stream: VoC
+    stack: backend
+    contract_path: "api/feedback.yaml"
+
+# =====================================================================
+# NOTES
+# - No analysis_ref / branch here. The story input carries target_branch
+#   (e.g. PM_Sep) and stream (PM | VoC).
+# - Dependencies are DERIVED at read time from contract files + code
+#   references read at the story's target_branch (derive-on-read).
+# =====================================================================

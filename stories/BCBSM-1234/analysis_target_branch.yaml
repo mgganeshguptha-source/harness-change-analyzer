@@ -1,0 +1,18 @@
+# Which branch to READ each repo at during analysis (analysis only — not execution).
+# Required. The developer decides this per story.
+#
+#   default   — branch to analyze every repo at, unless overridden below.
+#               For a fresh story, this is usually the current PRODUCTION
+#               release branch (the live baseline), because most repos have no
+#               work yet this release.
+#   overrides — per-repo branch, for repos that already have COMPLETED work in
+#               the current release (read those at the in-flight dev branch,
+#               e.g. PM_Sep, so analysis sees the predecessor change).
+#
+# Analysis hard-fails (listing every offender) if any resolved branch is
+# missing in its repo.
+
+default: main            # production baseline for untouched repos
+
+overrides:
+  # pricing-service: PM_Sep      # example: already changed this release

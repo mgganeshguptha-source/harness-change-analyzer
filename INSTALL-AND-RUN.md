@@ -29,16 +29,24 @@ Edit `config/service-registry.yaml`: list every repo with `stream` (PM|VoC),
 > folder committed to this repo (clone/push/PR/merge to submit). Swappable to
 > SharePoint Graph / JIRA later via the story_provider seam.
 
+Two required files per story:
+
 `stories/BCBSM-1234/story.md`:
 ```markdown
 ---
 story: BCBSM-1234
 title: Add loyaltyTier to member profile
-stream: PM
-target_branch: PM_Sep
 ---
 Full description, any length. Acceptance criteria, notes.
 ```
+
+`stories/BCBSM-1234/analysis_target_branch.yaml` (which branch to READ each repo at):
+```yaml
+default: main            # production baseline for repos untouched this release
+overrides:
+  pricing-service: PM_Sep   # a repo already changed this release -> read its dev branch
+```
+Analysis hard-fails, listing every offender, if any resolved branch is missing.
 Optional `stories/BCBSM-1234/attachments/` — text files fed to reasoning; others
 listed by name. (PDF/docx/image extraction is backlogged.)
 
@@ -52,7 +60,7 @@ HARNESS_REASONING=mock python run.py analyze \
   --registry ../config/service-registry.yaml \
   --out ../change-sets/BCBSM-1234.changeset.yaml
 ```
-Stream + target_branch come from the story frontmatter, not the command line.
+Analysis branches come from analysis_target_branch.yaml (default + per-repo overrides).
 
 ## 5. Approve (human)
 Open `../change-sets/BCBSM-1234.changeset.yaml`, review provider / consumers /

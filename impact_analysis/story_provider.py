@@ -13,14 +13,13 @@ StoryInput shape.
 
 Story folder layout (repo stopgap):
     stories/<story-id>/
-        story.md          # YAML frontmatter (stream, target_branch, title) + prose body
+        story.md          # YAML frontmatter (target_branch, title) + prose body
         attachments/      # optional; text-readable files fed to reasoning, others listed
 
 story.md frontmatter example:
     ---
     story: BCBSM-1234
     title: Add loyaltyTier to member profile
-    stream: PM
     target_branch: PM_Sep
     ---
     Full description here. Any length. Acceptance criteria, notes, etc.
@@ -43,8 +42,8 @@ class StoryInput:
     story: str
     title: str
     description: str
-    stream: str
-    target_branch: str
+    branch_default: str                       # from analysis_target_branch.yaml
+    branch_overrides: dict = field(default_factory=dict)   # repo -> branch
     attachments_text: dict = field(default_factory=dict)   # name -> content
     attachments_listed: list = field(default_factory=list)  # names only (binary)
 
@@ -62,8 +61,8 @@ class StoryInput:
             "story": self.story,
             "title": self.title,
             "description": desc,
-            "stream": self.stream,
-            "target_branch": self.target_branch,
+            "branch_default": self.branch_default,
+            "branch_overrides": self.branch_overrides,
         }
 
 
@@ -104,15 +103,21 @@ class RepoFolderProvider(StoryProvider):
         with open(story_md, "r", encoding="utf-8") as fh:
             meta, body = _parse_frontmatter(fh.read())
 
-        # required routing facts
-        stream = meta.get("stream")
-        target_branch = meta.get("target_branch")
-        missing = [k for k, v in (("stream", stream),
-                                  ("target_branch", target_branch)) if not v]
-        if missing:
+        # analysis_target_branch.yaml is REQUIRED (fail fast if absent)
+        atb = os.path.join(folder, "analysis_target_branch.yaml")
+        if not os.path.exists(atb):
+            raise FileNotFoundError(
+                f"analysis target branch file not found: {atb} "
+                f"(create stories/{story_id}/analysis_target_branch.yaml with a "
+                f"'default:' branch and optional per-repo 'overrides:')")
+        with open(atb, "r", encoding="utf-8") as fh:
+            btree = yaml.safe_load(fh) or {}
+        branch_default = btree.get("default")
+        branch_overrides = btree.get("overrides", {}) or {}
+        if not branch_default:
             raise ValueError(
-                f"story.md frontmatter missing: {', '.join(missing)} "
-                f"(needed for routing)")
+                f"{atb} must set 'default:' (the branch to analyze repos at "
+                f"unless overridden per repo)")
 
         text_attach, listed = {}, []
         adir = os.path.join(folder, "attachments")
@@ -134,8 +139,8 @@ class RepoFolderProvider(StoryProvider):
             story=meta.get("story", story_id),
             title=meta.get("title", ""),
             description=body.strip(),
-            stream=stream,
-            target_branch=target_branch,
+            branch_default=branch_default,
+            branch_overrides=branch_overrides,
             attachments_text=text_attach,
             attachments_listed=listed,
         )

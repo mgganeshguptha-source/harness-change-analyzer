@@ -6,7 +6,7 @@ the registry before the plan is generated. Manifest generation (to_manifest) and
 the cross-repo orchestrator were Phase 2 and have been moved aside; if you revive
 auto-orchestration, restore to_manifest from the phase2-orchestration set.
 
-Branch model (BCBSM): work happens on monthly dev branches (target_branch); the
+Branch model: analysis reads each repo at a branch chosen by the developer
 harness cuts feature/<story>-<slug> from it and PRs back into it. Those fields
 live on the change set and flow into the plan.
 """
@@ -29,19 +29,16 @@ def validate(change_set: dict, registry: ServiceRegistry) -> list[str]:
 
     if not cs.get("story"):
         problems.append("story is required")
-    if not cs.get("target_branch"):
-        problems.append("target_branch is required (e.g. PM_Sep)")
+    if not cs.get("branch_default"):
+        problems.append("branch_default is required "
+                        "(from analysis_target_branch.yaml)")
 
-    stream = cs.get("stream")
     provider = cs.get("provider", {}) or {}
     prov_repo = provider.get("repo")
     if not prov_repo:
         problems.append("provider.repo is required")
     elif not registry.contains(prov_repo):
         problems.append(f"provider.repo '{prov_repo}' not in registry")
-    elif stream and registry.get(prov_repo).stream.lower() != stream.lower():
-        problems.append(
-            f"provider.repo '{prov_repo}' is not in stream '{stream}'")
 
     consumer_repos = []
     for c in cs.get("consumers", []) or []:
@@ -49,9 +46,6 @@ def validate(change_set: dict, registry: ServiceRegistry) -> list[str]:
         consumer_repos.append(repo)
         if repo and not registry.contains(repo):
             problems.append(f"consumer '{repo}' not in registry")
-        elif repo and stream and registry.get(repo).stream.lower() != stream.lower():
-            problems.append(
-                f"consumer '{repo}' is not in stream '{stream}'")
 
     known = set(filter(None, [prov_repo] + consumer_repos))
     for edge in cs.get("dependencies", []) or []:

@@ -68,7 +68,6 @@ fences), suitable to be the story input for that repo's automated harness run.
 PARENT STORY:
 id: {cs.get('story')}
 title: {cs.get('title')}
-stream: {cs.get('stream')}
 description:
 {cs.get('description', '(see change set)')}
 
@@ -125,19 +124,20 @@ HARNESS_REASONING=copilot for an AI-authored per-repo story.)_
 def _render_plan(cs: dict, waves: list[list[str]], edges: list[dict],
                  role_of: dict, story_paths: dict) -> str:
     story = cs.get("story")
-    base = cs.get("target_branch")
     feature_id = story  # cross-repo story id == feature_id per repo (confirmed)
+    analyzed = (cs.get("analysis", {}) or {}).get("all_repo_refs", {}) or {}
 
     lines = [
         f"# Execution Plan — {story}",
         "",
         f"**Story:** {cs.get('title')}  ",
-        f"**Stream:** {cs.get('stream')}  |  **Target branch (base):** {base}  ",
         f"**feature_id for every repo:** `{feature_id}`",
         "",
-        "> Phase-1 model: this plan is produced by harness-control-plane. A",
-        "> developer/lead runs SDLC-Harness **manually** for each repo, using the",
-        "> per-repo story file listed below. Sequencing is human-enforced.",
+        "> This plan is produced by harness-change-analyzer (analysis only). A",
+        "> developer/lead runs SDLC-Harness **manually** for each repo. Sequencing",
+        "> is human-enforced. **You choose the `base`** (the release/dev branch to",
+        "> PR into, e.g. PM_Sep) when you run SDLC-Harness — the analyzer does not",
+        "> decide it. The branch shown per repo below is only what analysis READ.",
         "",
         "## Repos in this change",
         "",
@@ -145,7 +145,9 @@ def _render_plan(cs: dict, waves: list[list[str]], edges: list[dict],
     for repo, role in role_of.items():
         deps = _deps_of(repo, edges)
         dep_txt = f"depends on {', '.join(deps)}" if deps else "no dependencies"
-        lines.append(f"- **{repo}** — {role} ({dep_txt})")
+        aref = analyzed.get(repo)
+        aref_txt = f", analyzed at `{aref}`" if aref else ""
+        lines.append(f"- **{repo}** — {role} ({dep_txt}{aref_txt})")
     lines += ["", "## Run order", ""]
 
     step = 1
@@ -154,8 +156,7 @@ def _render_plan(cs: dict, waves: list[list[str]], edges: list[dict],
             repo = wave[0]
             deps = _deps_of(repo, edges)
             lines.append(f"### Step {step}: {repo}  ({role_of.get(repo,'?')})")
-            lines += _run_block(repo, feature_id, base, story_paths.get(repo),
-                                deps)
+            lines += _run_block(repo, feature_id, story_paths.get(repo), deps)
             lines.append("")
             step += 1
         else:
@@ -165,8 +166,7 @@ def _render_plan(cs: dict, waves: list[list[str]], edges: list[dict],
             for repo in wave:
                 deps = _deps_of(repo, edges)
                 lines.append(f"\n**{repo}** ({role_of.get(repo,'?')})")
-                lines += _run_block(repo, feature_id, base,
-                                    story_paths.get(repo), deps)
+                lines += _run_block(repo, feature_id, story_paths.get(repo), deps)
             lines.append("")
             step += 1
 
@@ -176,27 +176,27 @@ def _render_plan(cs: dict, waves: list[list[str]], edges: list[dict],
         "1. Copy the repo's per-repo story file into that repo's expected story",
         "   location (per your SDLC-Harness setup).",
         "2. In that repo: Actions → **SDLC-Harness** → Run workflow.",
-        f"3. Set `feature_id = {feature_id}` and `base = {base}`.",
-        "4. Review the PR the harness raises; merge into "
-        f"`{base}` when satisfied.",
+        f"3. Set `feature_id = {feature_id}` and set `base` to your target",
+        "   release/dev branch (e.g. PM_Sep).",
+        "4. Review the PR the harness raises; merge into your chosen base.",
         "",
         "Where a repo depends on another, run it only **after** the dependency's",
-        f"PR is merged into `{base}` — the harness checks out `{base}`, so an",
-        "unmerged upstream change is not visible to it.",
+        "PR is merged into your base branch — the harness checks out that base, so",
+        "an unmerged upstream change is not visible to it.",
     ]
     return "\n".join(lines) + "\n"
 
 
-def _run_block(repo: str, feature_id: str, base: str,
+def _run_block(repo: str, feature_id: str,
                story_path: str | None, deps: list[str]) -> list[str]:
     b = [
         "",
         f"- story file: `{story_path}`" if story_path else "- story file: (none)",
-        f"- run: SDLC-Harness with `feature_id={feature_id}`, `base={base}`",
+        f"- run: SDLC-Harness with `feature_id={feature_id}`, `base=<your target release branch>`",
     ]
     if deps:
-        b.append(f"- ⚠ run only after **{', '.join(deps)}**'s PR is merged into "
-                 f"`{base}`")
+        b.append(f"- \u26a0 run only after **{', '.join(deps)}**'s PR is merged "
+                 f"into your base branch")
     else:
         b.append("- no upstream dependency — can run immediately")
     return b

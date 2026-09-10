@@ -1,54 +1,47 @@
 # =====================================================================
-# SERVICE REGISTRY  (Control Plane)
+# SERVICE REGISTRY  (harness-change-analyzer)
 # =====================================================================
-# The repo UNIVERSE the Impact Analyzer may search. Repo identity only —
-# NOT per-run state. The branch to analyze is NOT here: it comes from the
-# story input per run (target_branch), so parallel releases can run at
-# once and the registry changes only when a repo is added/removed.
+# The repo UNIVERSE the analyzer may search. Repo identity only — no branch
+# (branch = target_branch from the story), no team/stream tag.
 #
 # Each repo declares:
-#   stream         PM | VoC   — which development stream it belongs to.
-#                  The analyzer searches only repos matching the story's
-#                  stream (a PM story never pulls in a VoC repo).
 #   stack          backend | angular-frontend | mobile-frontend
-#   contract_path  path to the OpenAPI contract within the repo.
+#   contract_paths one or more globs/paths to this repo's contract files.
+#                  A repo may expose several contracts (its own API, a consumed
+#                  client contract, versioned v1/v2, event schemas). All matching
+#                  files are read (recall-first); the analyzer + human decide
+#                  which matter.
+#
+# NO stored index: contracts are read fresh each run at target_branch
+# (derive-on-read), parsed deterministically (no LLM), then a lexical shortlist
+# picks ~10 candidates before the single Copilot reasoning call.
 # =====================================================================
 
 defaults:
-  contract_path: "api/{service}.yaml"
+  # default glob applied when a repo does not set its own contract_paths
+  contract_paths:
+    - "api/*.yaml"
+    - "api/*.yml"
 
 repos:
-  # ---- PM stream ----
-  member-service:
-    stream: PM
+  inventory-service:
     stack: backend
-    contract_path: "api/member.yaml"
+    contract_paths:
+      - "api/inventory.yaml"
 
-  provider-service:
-    stream: PM
+  pricing-service:
     stack: backend
-    contract_path: "api/provider.yaml"
+    contract_paths:
+      - "api/pricing.yaml"
 
-  provider-search:
-    stream: PM
-    stack: angular-frontend
-    contract_path: "api/provider-search.yaml"
-
-  # ---- VoC stream ----
-  survey-service:
-    stream: VoC
+  book-service:
     stack: backend
-    contract_path: "api/survey.yaml"
-
-  feedback-service:
-    stream: VoC
-    stack: backend
-    contract_path: "api/feedback.yaml"
+    contract_paths:
+      - "api/book.yaml"
 
 # =====================================================================
 # NOTES
-# - No analysis_ref / branch here. The story input carries target_branch
-#   (e.g. PM_Sep) and stream (PM | VoC).
-# - Dependencies are DERIVED at read time from contract files + code
-#   references read at the story's target_branch (derive-on-read).
+# - Add a repo here to bring it into analysis scope. No branch, no stream.
+# - contract_paths accepts exact paths or globs (api/*.yaml). For BCBSM repos
+#   that expose multiple contracts, list them or use a glob.
 # =====================================================================

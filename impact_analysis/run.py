@@ -49,7 +49,7 @@ def cmd_analyze(args) -> int:
         yaml.safe_dump(cs, fh, sort_keys=False)
     conf = cs["change_set"]["analysis"]["confidence"]
     print(f"[analyze] story '{args.story_id}' "
-          f"(stream={story['stream']}, target={story['target_branch']})")
+          f"(branches from analysis_target_branch.yaml)")
     print(f"[analyze] PROPOSED change set written: {args.out} "
           f"(confidence={conf})")
     print("[analyze] Review, set status: APPROVED (or edit consumers), "

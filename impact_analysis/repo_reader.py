@@ -1,22 +1,21 @@
 """
-Derive-on-read repository reader (READ ONLY).
+Derive-on-read repository reader (READ ONLY) + contract signal parsing.
 
-For each candidate repo, fetches the contract file and a shallow set of code
-signals AT THE REPO'S RESOLVED REF via the GitHub REST API. No local clone,
-no write scope. Because everything is read at the configured ref, the derived
-dependency picture is aligned by construction — there is no stored graph to
-drift against.
+For each repo, resolves its contract_paths (exact files and/or globs like
+api/*.yaml) at target_branch via the GitHub REST API, fetches each contract,
+and parses deterministic SIGNALS (paths, operationIds, tags, schema names) used
+by the lexical shortlist. NO LLM here — pure fetch + parse.
 
-Auth: a token with READ access to the candidate repos (GITHUB_TOKEN env).
-The analysis stage must NOT hold write scope; branch/PR creation happens later
-in the orchestration layer, only after human approval.
+Reads happen at target_branch so the picture is aligned by construction (no
+stored index, no drift). Reads are READ-ONLY: no branch/PR writes.
 
-Stdlib only (urllib) to keep the control plane portable.
+Stdlib + PyYAML only.
 """
 
 from __future__ import annotations
 
 import base64
+import fnmatch
 import json
 import os
 import urllib.error
@@ -24,7 +23,16 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
+import yaml
+
 GITHUB_API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+
+
+@dataclass
+class ContractDoc:
+    path: str
+    text: str
+    signals: set = field(default_factory=set)   # lowercased tokens for matching
 
 
 @dataclass
@@ -32,11 +40,81 @@ class RepoSnapshot:
     name: str
     ref: str
     owner: str
-    contract_path: str
-    contract_text: str | None = None        # None if not found at ref
-    contract_found: bool = False
-    code_hits: dict = field(default_factory=dict)   # term -> [paths]
-    errors: list[str] = field(default_factory=list)
+    contracts: list = field(default_factory=list)   # list[ContractDoc]
+    errors: list = field(default_factory=list)
+
+    @property
+    def contract_found(self) -> bool:
+        return bool(self.contracts)
+
+    @property
+    def all_signals(self) -> set:
+        s = set()
+        for c in self.contracts:
+            s |= c.signals
+        return s
+
+    def combined_text(self, limit: int = 4000) -> str:
+        """Concatenated contract text for the reasoning prompt (bounded)."""
+        if not self.contracts:
+            return "(no contract file found at ref)"
+        out = []
+        budget = limit
+        for c in self.contracts:
+            chunk = c.text[:budget]
+            out.append(f"# {c.path}\n{chunk}")
+            budget -= len(chunk)
+            if budget <= 0:
+                out.append("...[truncated]")
+                break
+        return "\n\n".join(out)
+
+
+def parse_signals(text: str) -> set:
+    """Extract lowercased tokens from an OpenAPI doc: paths, operationIds, tags,
+    schema names. Falls back to raw token scan if it isn't valid YAML."""
+    signals: set = set()
+    try:
+        doc = yaml.safe_load(text)
+    except Exception:  # noqa: BLE001
+        doc = None
+
+    def add(s):
+        if not s:
+            return
+        for tok in _tokenize(str(s)):
+            signals.add(tok)
+
+    if isinstance(doc, dict):
+        for p in (doc.get("paths") or {}):
+            add(p)                                  # /members/{id}/eligibility
+        for p, ops in (doc.get("paths") or {}).items():
+            if isinstance(ops, dict):
+                for method, op in ops.items():
+                    if isinstance(op, dict):
+                        add(op.get("operationId"))
+                        for t in (op.get("tags") or []):
+                            add(t)
+        comps = (doc.get("components") or {}).get("schemas") or {}
+        for schema_name in comps:
+            add(schema_name)
+        for t in (doc.get("tags") or []):
+            if isinstance(t, dict):
+                add(t.get("name"))
+            else:
+                add(t)
+    else:
+        # not parseable as OpenAPI — scan tokens so we still get some signal
+        add(text[:5000])
+    return signals
+
+
+def _tokenize(s: str) -> list:
+    import re
+    # split camelCase, snake, kebab, slashes, punctuation -> lowercase words
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", s)
+    return [w for w in re.findall(r"[A-Za-z][A-Za-z0-9]{1,}", spaced.lower())
+            if len(w) > 1]
 
 
 class RepoReader:
@@ -44,7 +122,7 @@ class RepoReader:
         self.owner = owner
         self.token = token or os.environ.get("GITHUB_TOKEN")
 
-    def _request(self, url: str) -> dict | list | None:
+    def _request(self, url: str):
         req = urllib.request.Request(url)
         req.add_header("Accept", "application/vnd.github+json")
         if self.token:
@@ -57,45 +135,65 @@ class RepoReader:
                 return None
             raise
 
-    # ---- contract file at ref ---------------------------------------
+    def branch_exists(self, repo: str, ref: str) -> bool:
+        """True if `ref` (branch) exists in the repo."""
+        url = (f"{GITHUB_API}/repos/{self.owner}/{repo}/branches/"
+               f"{urllib.parse.quote(ref)}")
+        try:
+            data = self._request(url)
+        except urllib.error.HTTPError:
+            return False
+        return bool(data and data.get("name"))
+
+    def _list_dir(self, repo: str, dirpath: str, ref: str) -> list:
+        url = (f"{GITHUB_API}/repos/{self.owner}/{repo}/contents/"
+               f"{urllib.parse.quote(dirpath)}?ref={urllib.parse.quote(ref)}")
+        data = self._request(url)
+        return data if isinstance(data, list) else []
+
     def _get_file(self, repo: str, path: str, ref: str) -> str | None:
-        url = f"{GITHUB_API}/repos/{self.owner}/{repo}/contents/{path}?ref={ref}"
+        url = (f"{GITHUB_API}/repos/{self.owner}/{repo}/contents/"
+               f"{urllib.parse.quote(path)}?ref={urllib.parse.quote(ref)}")
         data = self._request(url)
         if not data or "content" not in data:
             return None
         return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
 
-    # ---- code search (repo-scoped) ----------------------------------
-    def _search_code(self, repo: str, term: str) -> list[str]:
-        # GitHub code search indexes the default branch; treat hits as SIGNALS,
-        # not proof. The contract file (read at the exact ref) is the ground truth.
-        q = urllib.parse.quote(f'{term} repo:{self.owner}/{repo}')
-        url = f"{GITHUB_API}/search/code?q={q}&per_page=5"
-        try:
-            data = self._request(url)
-        except urllib.error.HTTPError:
-            return []
-        if not data or "items" not in data:
-            return []
-        return [item["path"] for item in data["items"]]
+    def _resolve_glob(self, repo: str, pattern: str, ref: str) -> list:
+        """Resolve one exact path or a single-directory glob (api/*.yaml)."""
+        if "*" not in pattern and "?" not in pattern:
+            return [pattern]
+        dirpath = os.path.dirname(pattern) or "."
+        base = os.path.basename(pattern)
+        listing = self._list_dir(repo, dirpath if dirpath != "." else "", ref)
+        out = []
+        for item in listing:
+            if item.get("type") == "file" and fnmatch.fnmatch(item["name"], base):
+                out.append(item["path"])
+        return out
 
-    # ---- public -----------------------------------------------------
-    def read(self, name: str, ref: str, contract_path: str,
-             search_terms: list[str]) -> RepoSnapshot:
-        snap = RepoSnapshot(name=name, ref=ref, owner=self.owner,
-                            contract_path=contract_path)
-        try:
-            text = self._get_file(name, contract_path, ref)
-            snap.contract_text = text
-            snap.contract_found = text is not None
-        except Exception as e:  # noqa: BLE001
-            snap.errors.append(f"contract read failed: {e}")
-
-        for term in search_terms:
+    def read(self, name: str, ref: str, contract_paths: list) -> RepoSnapshot:
+        snap = RepoSnapshot(name=name, ref=ref, owner=self.owner)
+        resolved: list = []
+        for pattern in contract_paths:
             try:
-                hits = self._search_code(name, term)
-                if hits:
-                    snap.code_hits[term] = hits
+                resolved.extend(self._resolve_glob(name, pattern, ref))
             except Exception as e:  # noqa: BLE001
-                snap.errors.append(f"code search '{term}' failed: {e}")
+                snap.errors.append(f"resolve '{pattern}' failed: {e}")
+        # de-dup, keep order
+        seen, paths = set(), []
+        for p in resolved:
+            if p not in seen:
+                seen.add(p)
+                paths.append(p)
+
+        for path in paths:
+            try:
+                text = self._get_file(name, path, ref)
+                if text is not None:
+                    snap.contracts.append(
+                        ContractDoc(path=path, text=text,
+                                    signals=parse_signals(text)))
+            except Exception as e:  # noqa: BLE001
+                snap.errors.append(f"read '{path}' failed: {e}")
         return snap

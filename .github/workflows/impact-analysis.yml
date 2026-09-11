@@ -127,11 +127,13 @@ jobs:
 
       # 6. COMMIT results back to the developer's branch (scratch branch).
       - name: Commit results to the story branch
+        if: always()
         working-directory: story-branch
         run: |
           git config user.name "harness-change-analyzer"
           git config user.email "harness-bot@users.noreply.github.com"
-          git add change-sets/ stories/
+          # add whatever was produced (changeset always; per-repo stories if plan ran)
+          git add change-sets/ stories/ 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "no changes to commit"
           else
@@ -140,10 +142,14 @@ jobs:
           fi
 
       # 7. ARTIFACTS — downloadable without checking out the branch.
+      #    if-no-files-found: ignore so a failed analyze (no changeset yet) does
+      #    not fail this step; whatever exists is uploaded for inspection.
       - name: Upload plan + stories + change set
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: analysis-${{ inputs.story_id }}
+          if-no-files-found: ignore
           path: |
             story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml
             story-branch/stories/${{ inputs.story_id }}/per-repo/

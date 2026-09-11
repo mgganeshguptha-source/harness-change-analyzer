@@ -47,7 +47,17 @@ def validate(change_set: dict, registry: ServiceRegistry) -> list[str]:
         if repo and not registry.contains(repo):
             problems.append(f"consumer '{repo}' not in registry")
 
-    known = set(filter(None, [prov_repo] + consumer_repos))
+    affected_repos = []
+    for a in cs.get("potentially_affected", []) or []:
+        repo = a.get("repo")
+        affected_repos.append(repo)
+        if repo and not registry.contains(repo):
+            problems.append(f"potentially_affected '{repo}' not in registry")
+
+    # dependency edges may reference provider, consumers, OR potentially_affected
+    # (a downstream repo can be flagged as impacted without being a direct
+    # contract consumer — the edge to it is still valid).
+    known = set(filter(None, [prov_repo] + consumer_repos + affected_repos))
     for edge in cs.get("dependencies", []) or []:
         for side in ("from", "to"):
             r = edge.get(side)

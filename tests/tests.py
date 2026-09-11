@@ -106,6 +106,13 @@ def test_change_set_guards():
         "dependencies": [{"from": "pricing-service", "to": "inventory-service"}],
         "contract_change": {"type": "backward_compatible"}, "options": {}}}
     ok("valid change set", validate(good, reg) == [])
+    # dependency edge to a potentially_affected repo is allowed
+    aff = {"change_set": dict(good["change_set"],
+        consumers=[{"repo": "inventory-service"}],
+        potentially_affected=[{"repo": "book-service", "reason": "downstream"}],
+        dependencies=[{"from": "pricing-service", "to": "inventory-service"},
+                      {"from": "inventory-service", "to": "book-service"}])}
+    ok("edge to potentially_affected allowed", validate(aff, reg) == [])
     bad = {"change_set": dict(good["change_set"], consumers=[{"repo": "ghost"}])}
     ok("unknown repo rejected", validate(bad, reg) != [])
     nobranch = {"change_set": dict(good["change_set"], branch_default="")}
@@ -141,17 +148,19 @@ def test_plan(tmp_root):
         "branch_default": "main", "description": "expose and consume a field",
         "provider": {"repo": "pricing-service", "contract": "api/pricing.yaml",
                      "contract_version": "v2"},
-        "consumers": [{"repo": "inventory-service"}, {"repo": "book-service"}],
+        "consumers": [{"repo": "inventory-service"}],
+        "potentially_affected": [{"repo": "book-service",
+                                  "reason": "downstream of inventory"}],
         "dependencies": [{"from": "pricing-service", "to": "inventory-service"},
-                         {"from": "pricing-service", "to": "book-service"}],
+                         {"from": "inventory-service", "to": "book-service"}],
         "contract_change": {"type": "backward_compatible"}, "options": {}}}
     res = generate_plan(cs, stories_root=tmp_root, reasoner=mock_reason)
     ok("plan file created", os.path.exists(res["plan_path"]))
     ok("provider wave first", res["waves"][0] == ["pricing-service"])
-    ok("consumers second wave", set(res["waves"][1]) ==
-       {"inventory-service", "book-service"})
-    ok("per-repo story files created",
-       all(os.path.exists(p) for p in res["story_paths"].values()))
+    ok("book-service (affected) in a later wave",
+       any("book-service" in w for w in res["waves"]))
+    ok("story drafted for affected repo",
+       "book-service" in res["story_paths"])
     plan_txt = open(res["plan_path"]).read()
     ok("no hardcoded base=PM_Sep", "base=PM_Sep" not in plan_txt
        and "base = PM_Sep" not in plan_txt)

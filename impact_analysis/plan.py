@@ -73,7 +73,8 @@ description:
 
 THIS REPO:
 name: {repo}
-role: {role}            # provider owns the contract; consumer adapts to it
+role: {role}            # provider owns; consumer adapts; potentially_affected
+                        # = downstream/indirect — verify if a change is needed
 contract: {contract}
 
 Write the story for THIS repo only. Include:
@@ -225,11 +226,14 @@ def generate_plan(change_set: dict, stories_root: str = "stories",
     provider = cs["provider"]["repo"]
     contract = cs["provider"].get("contract", "")
     consumers = [c["repo"] for c in cs.get("consumers", []) or []]
+    affected = [a["repo"] for a in cs.get("potentially_affected", []) or []]
     edges = cs.get("dependencies", [])
 
     role_of = {provider: "provider"}
     for c in consumers:
         role_of.setdefault(c, "consumer")
+    for a in affected:
+        role_of.setdefault(a, "potentially_affected")
 
     # 1. per-repo story files
     out_dir = os.path.join(stories_root, story, "per-repo")
@@ -243,7 +247,7 @@ def generate_plan(change_set: dict, stories_root: str = "stories",
         story_paths[repo] = path
 
     # 2. plan
-    waves = _toposort(provider, consumers, edges)
+    waves = _toposort(provider, consumers + affected, edges)
     plan_md = _render_plan(cs, waves, edges, role_of, story_paths)
     plan_path = os.path.join(out_dir, "PLAN.md")
     with open(plan_path, "w", encoding="utf-8") as fh:

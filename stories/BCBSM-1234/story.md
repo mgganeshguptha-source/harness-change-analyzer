@@ -1,7 +1,7 @@
 ---
 story: BCBSM-1234
 title: Add loyaltyTier to member profile
-target_branch: PM_Sep
+model: gpt-5.4-mini   # optional — omit to use the CI default (gpt-5.4-mini)
 ---
 Expose a member's loyaltyTier through the Member API so the provider search
 experience can display it and apply a tier-based discount.

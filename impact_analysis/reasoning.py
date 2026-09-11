@@ -29,7 +29,7 @@ import os
 import re
 
 # Same default model string the engine uses; override via env.
-DEFAULT_MODEL = os.environ.get("HARNESS_ANALYSIS_MODEL", "gpt-4.1")
+DEFAULT_MODEL = os.environ.get("HARNESS_ANALYSIS_MODEL", "gpt-5.4-mini")
 SESSION_TIMEOUT_S = int(os.environ.get("HARNESS_ANALYSIS_TIMEOUT", "300"))
 
 
@@ -54,7 +54,7 @@ def parse_json(text: str) -> dict:
 # ---------------------------------------------------------------------
 # MOCK backend
 # ---------------------------------------------------------------------
-def mock_reason(prompt: str) -> dict:
+def mock_reason(prompt: str, model: str | None = None) -> dict:
     """Deterministic fake reasoning. No SDK. Optionally load a fixture file."""
     fixture = os.environ.get("HARNESS_MOCK_FIXTURE")
     if fixture and os.path.exists(fixture):
@@ -93,12 +93,12 @@ def mock_reason(prompt: str) -> dict:
 # ---------------------------------------------------------------------
 # REAL Copilot backend  (matches engine/sdk_runner.py usage)
 # ---------------------------------------------------------------------
-def copilot_reason(prompt: str) -> dict:
+def copilot_reason(prompt: str, model: str | None = None) -> dict:
     """Real reasoning via the Copilot SDK. Returns parsed JSON dict."""
-    return asyncio.run(_copilot_reason_async(prompt))
+    return asyncio.run(_copilot_reason_async(prompt, model or DEFAULT_MODEL))
 
 
-async def _copilot_reason_async(prompt: str) -> dict:
+async def _copilot_reason_async(prompt: str, model: str) -> dict:
     # Lazy import so the module loads on machines without the SDK (mock path).
     from copilot import CopilotClient  # noqa: F401  (github-copilot-sdk)
 
@@ -123,7 +123,7 @@ async def _copilot_reason_async(prompt: str) -> dict:
     # do NOT pass on_permission_request (that is the coding-phase write-boundary
     # enforcement); the analyzer never writes to any repo.
     async with CopilotClient(**client_kwargs) as client:
-        async with await client.create_session(model=DEFAULT_MODEL) as session:
+        async with await client.create_session(model=model) as session:
             done = asyncio.Event()
 
             def on_event(event):

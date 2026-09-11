@@ -86,9 +86,9 @@ Keep it concise and implementation-focused. MARKDOWN only."""
 
 
 def _draft_repo_story(cs: dict, repo: str, role: str, contract: str,
-                      reasoner) -> str:
+                      reasoner, model: str | None = None) -> str:
     prompt = _per_repo_prompt(cs, repo, role, contract)
-    out = reasoner(prompt)
+    out = reasoner(prompt, model) if model else reasoner(prompt)
     # reasoner may return dict (mock/JSON backends) or str (markdown). Normalise.
     if isinstance(out, dict):
         # mock backend returns the impact-analysis JSON shape; fall back to a
@@ -214,6 +214,9 @@ def generate_plan(change_set: dict, stories_root: str = "stories",
 
     story = cs["story"]
     reasoner = reasoner or get_reasoner()
+    model = (cs.get("analysis", {}) or {}).get("model")
+    if model == "default":
+        model = None
     provider = cs["provider"]["repo"]
     contract = cs["provider"].get("contract", "")
     consumers = [c["repo"] for c in cs.get("consumers", []) or []]
@@ -228,7 +231,7 @@ def generate_plan(change_set: dict, stories_root: str = "stories",
     os.makedirs(out_dir, exist_ok=True)
     story_paths = {}
     for repo, role in role_of.items():
-        text = _draft_repo_story(cs, repo, role, contract, reasoner)
+        text = _draft_repo_story(cs, repo, role, contract, reasoner, model)
         path = os.path.join(out_dir, f"{repo}.md")
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(text)

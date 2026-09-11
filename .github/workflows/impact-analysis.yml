@@ -63,6 +63,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node (for Copilot CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
       - name: Install deps
         run: pip install -r tool/requirements.txt
 

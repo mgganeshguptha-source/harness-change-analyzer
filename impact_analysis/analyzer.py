@@ -159,7 +159,8 @@ def analyze(story: dict, registry_path: str, owner: str,
 
     # reason over candidates only
     prompt = build_prompt(story, candidates)
-    result = reasoner(prompt)
+    model = story.get("model")
+    result = reasoner(prompt, model) if model else reasoner(prompt)
     if isinstance(result, str):
         from reasoning import parse_json
         result = parse_json(result)
@@ -176,6 +177,7 @@ def analyze(story: dict, registry_path: str, owner: str,
             "status": "PROPOSED",
             "analysis": {
                 "engine": "copilot-sdk",
+                "model": story.get("model") or "default",
                 "confidence": result.get("confidence", 0),
                 "analyzed_refs": analyzed_refs,
                 "all_repo_refs": repo_branch,

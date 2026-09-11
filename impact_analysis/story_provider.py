@@ -42,7 +42,8 @@ class StoryInput:
     story: str
     title: str
     description: str
-    branch_default: str                       # from analysis_target_branch.yaml
+    model: str | None = None                  # optional model override (frontmatter)
+    branch_default: str = ""                   # from analysis_target_branch.yaml
     branch_overrides: dict = field(default_factory=dict)   # repo -> branch
     attachments_text: dict = field(default_factory=dict)   # name -> content
     attachments_listed: list = field(default_factory=list)  # names only (binary)
@@ -63,6 +64,7 @@ class StoryInput:
             "description": desc,
             "branch_default": self.branch_default,
             "branch_overrides": self.branch_overrides,
+            "model": self.model,
         }
 
 
@@ -139,6 +141,7 @@ class RepoFolderProvider(StoryProvider):
             story=meta.get("story", story_id),
             title=meta.get("title", ""),
             description=body.strip(),
+            model=meta.get("model"),
             branch_default=branch_default,
             branch_overrides=branch_overrides,
             attachments_text=text_attach,

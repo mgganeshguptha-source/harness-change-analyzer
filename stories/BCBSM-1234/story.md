@@ -1,12 +1,14 @@
 ---
 story: BCBSM-1234
-title: Add loyaltyTier to member profile
-model: gpt-5.4-mini   # optional — omit to use the CI default (gpt-5.4-mini)
+title: Add PLATINUM discount tier to pricing
+model: GPT-5.4 mini
 ---
-Expose a member's loyaltyTier through the Member API so the provider search
-experience can display it and apply a tier-based discount.
+Extend the pricing-service discountTier to support a new PLATINUM tier in
+addition to STANDARD and PREMIUM. inventory-service must apply the PLATINUM
+tier when computing effectivePrice, and book-service must reflect the resulting
+finalPrice. No breaking changes to existing tiers.
 
 Acceptance criteria:
-- Member API returns loyaltyTier on the member profile response.
-- Provider search reads loyaltyTier and shows the tier badge.
-- Backward compatible: existing consumers unaffected when the field is absent.
+- pricing-service: discountTier enum includes PLATINUM.
+- inventory-service: effectivePrice correctly applies PLATINUM.
+- book-service: finalPrice reflects the PLATINUM-adjusted price.

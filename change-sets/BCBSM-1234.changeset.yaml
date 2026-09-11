@@ -36,7 +36,7 @@ change_set:
   analysis:
     engine: copilot-sdk
     model: gpt-5.4-mini
-    confidence: 0.91
+    confidence: 0.89
     analyzed_refs:
       inventory-service: main
       pricing-service: main
@@ -59,27 +59,25 @@ change_set:
       score: 0
       matched: []
     evidence:
-    - pricing-service owns discountTier in api/pricing.yaml and is the provider contract
-      being extended
-    - discountTier enum changes from [STANDARD, PREMIUM] to include PLATINUM, which
-      is additive/backward compatible
+    - pricing-service owns discountTier and currently enumerates STANDARD and PREMIUM
+      in api/pricing.yaml.
     - inventory-service explicitly consumes pricing-service and computes effectivePrice
-      from discountTier
-    - book-service exposes finalPrice sourced from inventory-service, but its own
-      contract does not show direct discountTier usage
+      from discountTier.
+    - book-service depends on inventory-service final price, but the impacted contract
+      is indirect rather than direct.
   provider:
     repo: pricing-service
     contract: api/pricing.yaml
     contract_version: v1
   consumers:
   - repo: inventory-service
-    evidence: Inventory API says it consumes pricing-service and applies discountTier
-      to compute effectivePrice; the added PLATINUM enum must be handled here.
+    evidence: api/inventory.yaml says it consumes pricing-service and applies discountTier
+      to compute effectivePrice; adding PLATINUM changes the pricing contract it uses.
   potentially_affected:
   - repo: book-service
-    reason: Top consumer of inventory-service finalPrice; the downstream price shown
-      to users may change, but no direct use of pricing-service's discountTier is
-      shown.
+    reason: api/book.yaml consumes inventory-service final price; the downstream price
+      may change when inventory-service handles PLATINUM, but this repo does not use
+      discountTier directly.
   dependencies:
   - from: pricing-service
     to: inventory-service

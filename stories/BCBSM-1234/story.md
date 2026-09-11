@@ -1,7 +1,7 @@
 ---
 story: BCBSM-1234
 title: Add PLATINUM discount tier to pricing
-model: GPT-5.4 mini
+model: gpt-5.4-mini
 ---
 Extend the pricing-service discountTier to support a new PLATINUM tier in
 addition to STANDARD and PREMIUM. inventory-service must apply the PLATINUM

@@ -88,7 +88,12 @@ Keep it concise and implementation-focused. MARKDOWN only."""
 def _draft_repo_story(cs: dict, repo: str, role: str, contract: str,
                       reasoner, model: str | None = None) -> str:
     prompt = _per_repo_prompt(cs, repo, role, contract)
-    out = reasoner(prompt, model) if model else reasoner(prompt)
+    # per-repo stories are MARKDOWN, not JSON — ask for raw text.
+    try:
+        out = reasoner(prompt, model, parse=False)
+    except TypeError:
+        # mock or a reasoner without the parse kwarg
+        out = reasoner(prompt, model) if model else reasoner(prompt)
     # reasoner may return dict (mock/JSON backends) or str (markdown). Normalise.
     if isinstance(out, dict):
         # mock backend returns the impact-analysis JSON shape; fall back to a

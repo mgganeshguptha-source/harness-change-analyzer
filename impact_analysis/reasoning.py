@@ -54,7 +54,7 @@ def parse_json(text: str) -> dict:
 # ---------------------------------------------------------------------
 # MOCK backend
 # ---------------------------------------------------------------------
-def mock_reason(prompt: str, model: str | None = None) -> dict:
+def mock_reason(prompt: str, model: str | None = None, parse: bool = True):
     """Deterministic fake reasoning. No SDK. Optionally load a fixture file."""
     fixture = os.environ.get("HARNESS_MOCK_FIXTURE")
     if fixture and os.path.exists(fixture):
@@ -93,12 +93,14 @@ def mock_reason(prompt: str, model: str | None = None) -> dict:
 # ---------------------------------------------------------------------
 # REAL Copilot backend  (matches engine/sdk_runner.py usage)
 # ---------------------------------------------------------------------
-def copilot_reason(prompt: str, model: str | None = None) -> dict:
-    """Real reasoning via the Copilot SDK. Returns parsed JSON dict."""
-    return asyncio.run(_copilot_reason_async(prompt, model or DEFAULT_MODEL))
+def copilot_reason(prompt: str, model: str | None = None, parse: bool = True):
+    """Real reasoning via the Copilot SDK.
+    parse=True  -> parse the reply as JSON and return a dict (analysis).
+    parse=False -> return the raw text reply (e.g. Markdown per-repo stories)."""
+    return asyncio.run(_copilot_reason_async(prompt, model or DEFAULT_MODEL, parse))
 
 
-async def _copilot_reason_async(prompt: str, model: str) -> dict:
+async def _copilot_reason_async(prompt: str, model: str, parse: bool = True):
     # Lazy import so the module loads on machines without the SDK (mock path).
     from copilot import CopilotClient  # noqa: F401  (github-copilot-sdk)
 
@@ -157,6 +159,8 @@ async def _copilot_reason_async(prompt: str, model: str) -> dict:
         detail = "; ".join(errors) if errors else f"no assistant.message; events={seen_events}"
         raise RuntimeError(f"Copilot reasoning produced no output: {detail}")
 
+    if not parse:
+        return last_message["text"]
     try:
         return parse_json(last_message["text"])
     except Exception as e:  # noqa: BLE001

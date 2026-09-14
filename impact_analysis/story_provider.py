@@ -13,14 +13,17 @@ StoryInput shape.
 
 Story folder layout (repo stopgap):
     stories/<story-id>/
-        story.md          # YAML frontmatter (target_branch, title) + prose body
+        story.md          # YAML frontmatter (title, optional model) + prose body
         attachments/      # optional; text-readable files fed to reasoning, others listed
+
+The story ID is the FOLDER NAME (authoritative). Any 'story:' key in frontmatter
+is ignored — the folder the story lives in decides its ID, so a run dispatched
+for stories/<id>/ is always analyzed and planned as <id>.
 
 story.md frontmatter example:
     ---
-    story: BCBSM-1234
     title: Add loyaltyTier to member profile
-    target_branch: PM_Sep
+    model: gpt-5.4-mini        # optional per-story model override
     ---
     Full description here. Any length. Acceptance criteria, notes, etc.
 """
@@ -150,7 +153,7 @@ class RepoFolderProvider(StoryProvider):
                     listed.append(name)
 
         return StoryInput(
-            story=meta.get("story", story_id),
+            story=story_id,          # folder name is authoritative; frontmatter 'story:' ignored
             title=meta.get("title", ""),
             description=body.strip(),
             model=meta.get("model"),

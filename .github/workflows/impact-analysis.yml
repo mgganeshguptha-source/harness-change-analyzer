@@ -4,20 +4,24 @@
 # Model (Phase 1): analyze -> plan -> human review -> developer runs
 # SDLC-Harness manually per repo. No auto-orchestration.
 #
+# EXECUTION MODEL (Option B)
+#   - ALWAYS launch this workflow with "Use workflow from: main".
+#   - The TOOL CODE always runs pinned at tag v1 (checked out explicitly),
+#     independent of the launch branch.
+#   - The STORY is read from the branch named in the `story_branch` input
+#     (e.g. harness-change/BCBSM-1234), at stories/<story_id>/.
+#   - Results (changeset, PLAN.md, per-repo stories) are committed BACK to
+#     that same story branch and uploaded as artifacts. main is never written.
+#
 # HOW A DEVELOPER USES THIS
 #   1. Branch from main:   harness-change/<story-id>   (e.g. harness-change/BCBSM-1234)
-#   2. Commit the story:   stories/<story-id>/story.md (frontmatter + prose)
-#   3. Actions -> impact-analysis -> Run workflow -> pick THAT branch.
+#   2. Commit the story:   stories/<story-id>/story.md + analysis_target_branch.yaml
+#   3. Actions -> impact-analysis -> Run workflow -> "Use workflow from: main",
+#      set story_id and story_branch to your branch.
 #   4. The workflow writes PLAN.md + per-repo stories + changeset BACK to the
-#      same branch, and uploads them as artifacts.
+#      story branch, and uploads them as artifacts.
 #   5. Review, then run SDLC-Harness per repo (manual) per PLAN.md.
 #   The branch is scratch — discard it when done. It is never merged to main.
-#
-# CODE PINNING (@v1 approach)
-#   main is protected; developers only touch their harness-change/* branch. The
-#   TOOL CODE that runs is checked out at `tool_ref` (default v1), NOT from the
-#   developer's branch — so tool changes on main don't affect developers until a
-#   maintainer cuts v2. Only the STORY is read from the developer's branch.
 # =====================================================================
 name: impact-analysis
 
@@ -25,12 +29,11 @@ on:
   workflow_dispatch:
     inputs:
       story_id:
-        description: "Story ID; reads stories/<id>/story.md on this branch"
+        description: "Story ID; reads stories/<id>/story.md on the story branch"
         required: true
-      tool_ref:
-        description: "Pinned analyzer version to run (tag/branch). Default v1."
-        required: false
-        default: "v1"
+      story_branch:
+        description: "Branch to read the story from (e.g. harness-change/BCBSM-1234)"
+        required: true
       reasoning:
         description: "Reasoning backend: copilot (real) or mock"
         required: false
@@ -45,17 +48,25 @@ jobs:
   analyze-and-plan:
     runs-on: ubuntu-latest
     steps:
-      # 1. STORY — from the branch the developer selected to run on.
+      # 0. GUARD — never read from / write to main.
+      - name: Refuse to run against main
+        if: inputs.story_branch == 'main'
+        run: |
+          echo "::error::story_branch must be a harness-change/<id> branch, not main."
+          exit 1
+
+      # 1. STORY — from the branch named in the input (NOT the launch branch).
       - name: Checkout story branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.story_branch }}
           path: story-branch          # story lives here (developer's branch)
 
-      # 2. TOOL CODE — pinned at tool_ref (default v1), independent of the branch.
-      - name: Checkout analyzer tool (pinned)
+      # 2. TOOL CODE — always pinned at tag v1, independent of any branch.
+      - name: Checkout analyzer tool (pinned @v1)
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tool_ref }}
+          ref: v1
           path: tool                  # analyzer code runs from here
 
       - name: Set up Python
@@ -74,7 +85,7 @@ jobs:
       - name: Install deps
         run: pip install -r tool/requirements.txt
 
-      # 3. ANALYZE — read the story from the branch, using pinned tool code.
+      # 3. ANALYZE — read the story from the story branch, using pinned tool code.
       #    Registry also comes from the pinned tool (single source of truth).
       - name: Analyze
         env:
@@ -147,7 +158,7 @@ jobs:
             --stories-root story-branch/stories \
             --reasoning "${{ inputs.reasoning }}"
 
-      # 6. COMMIT results back to the developer's branch (scratch branch).
+      # 6. COMMIT results back to the STORY branch (scratch branch, never main).
       - name: Commit results to the story branch
         if: always()
         working-directory: story-branch
@@ -160,7 +171,7 @@ jobs:
             echo "no changes to commit"
           else
             git commit -m "analysis+plan for ${{ inputs.story_id }} [skip ci]"
-            git push origin HEAD:${{ github.ref_name }}
+            git push origin HEAD:${{ inputs.story_branch }}
           fi
 
       # 7. ARTIFACTS — downloadable without checking out the branch.

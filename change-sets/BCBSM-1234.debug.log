@@ -1,0 +1,399 @@
+
+======================================================================
+[15:43:18] STAGE: 1. STORY PARSE — extract search terms
+======================================================================
+  story: BCBSM-1234
+  title: Add currency selection to book pricing
+  description (as sent):
+----------------------------------------------------------------------
+Allow a book's price to be requested and returned in a chosen currency.
+pricing-service adds a currency to its price response so prices can be returned
+in a requested currency. inventory-service must pass the requested currency
+through when computing the effective price, and book-service must accept a
+currency parameter and surface the final price in that currency.
+
+Acceptance criteria:
+- pricing-service returns the price in the requested currency.
+- inventory-service forwards the requested currency and computes the effective
+  price in it.
+- book-service accepts a currency parameter and shows the final price in it.
+- Existing behaviour (no currency requested) defaults to USD.
+
+--- ATTACHMENTS ---
+
+[example-response.json]
+{ "memberId": "M123", "name": "Jane Doe", "loyaltyTier": "GOLD" }
+
+
+----------------------------------------------------------------------
+  extracted terms: (12)
+      - currency
+      - selection
+      - book
+      - pricing
+      - price
+      - requested
+      - returned
+      - chosen
+      - service
+      - adds
+      - its
+      - response
+
+======================================================================
+[15:43:18] STAGE: 2. CHANGE-TYPE CLASSIFICATION (deterministic, no LLM)
+======================================================================
+  change_type: contract
+  behavioural: True
+  contract_only_insufficient: True
+  keyword scores:
+      behaviour = 1
+      contract = 2
+  reason: story shows behavioural/semantic signals; a value's meaning may change without an API-shape change, so contract-only evidence is insufficient — verify functional impact per repo.
+
+======================================================================
+[15:43:18] STAGE: 3. BRANCH RESOLUTION + EXISTENCE CHECK
+======================================================================
+  resolved branch per repo:
+      inventory-service = main
+      pricing-service = main
+      book-service = main
+  all branches exist: yes
+
+======================================================================
+[15:43:18] STAGE: 4. DERIVE-ON-READ (contracts at each branch, no LLM)
+======================================================================
+  inventory-service: contracts_found=True, signals=4
+  pricing-service: contracts_found=True, signals=5
+  book-service: contracts_found=True, signals=5
+
+======================================================================
+[15:43:18] STAGE: 5. LEXICAL SHORTLIST (term overlap, no LLM)
+======================================================================
+  cap: 10
+  min_candidates: 3
+  scores (all repos): (3)
+      - pricing-service: 3 ['book', 'price', 'pricing']
+      - book-service: 1 ['book']
+      - inventory-service: 1 ['book']
+  widened: True (forced by change-type)
+  candidates -> LLM: (3)
+      - inventory-service
+      - pricing-service
+      - book-service
+
+======================================================================
+[15:43:19] STAGE: 6. CODE-SIGNAL SCAN (shallow clone + grep, candidates only)
+======================================================================
+  scan enabled: True
+  attributed edges: (2)
+      - inventory-service -> pricing-service: webclient_call '/pricing/{bookId}' (src/main/java/com/bcbsm/inventory/PricingClient.java:18)
+      - book-service -> inventory-service: webclient_call '/inventory/{bookId}' (src/main/java/com/bcbsm/book/InventoryClient.java:18)
+
+======================================================================
+[15:43:19] STAGE: 7. LLM REASONING (Copilot)
+======================================================================
+  model: default
+  FULL PROMPT:
+----------------------------------------------------------------------
+You are the Impact Analyzer for a cross-repo AI-SDLC harness.
+Given a business story and read-only snapshots of CANDIDATE repositories
+(pre-filtered by lexical match, each read at the story's target branch),
+determine the cross-repo impact.
+
+RULES:
+- The PROVIDER is the repo that OWNS the interface/contract being changed.
+- CONSUMERS are repos that must adapt to that contract change.
+- Use the contract content as evidence. If a repo references the area but shows
+  no use of the impacted interface, list it under potentially_affected (NOT
+  consumers).
+- These candidates were pre-filtered; if NONE truly fit, say so via low
+  confidence and an empty provider — do not force a choice.
+- If evidence is weak or ambiguous, LOWER the confidence score.
+- CLARIFICATIONS: compare the STORY against the contracts and code-signal
+  evidence. List ONLY questions that genuinely BLOCK a confident cross-repo
+  answer — e.g. the story implies a field/parameter the contract doesn't have,
+  it's unclear which of several consumers is in scope, or breaking-vs-additive
+  is ambiguous. Ask grounded, specific questions (reference the contract/repo),
+  not generic ones. If there is nothing blocking, return an empty list.
+- ASSUMPTIONS: for NON-blocking gaps, proceed using a reasonable assumption and
+  record it explicitly in "assumptions" (do not ask about these). Never bury an
+  assumption silently.
+- Output STRICT JSON only. No prose, no markdown, no code fences.
+
+STORY:
+id: BCBSM-1234
+title: Add currency selection to book pricing
+description: Allow a book's price to be requested and returned in a chosen currency.
+pricing-service adds a currency to its price response so prices can be returned
+in a requested currency. inventory-service must pass the requested currency
+through when computing the effective price, and book-service must accept a
+currency parameter and surface the final price in that currency.
+
+Acceptance criteria:
+- pricing-service returns the price in the requested currency.
+- inventory-service forwards the requested currency and computes the effective
+  price in it.
+- book-service accepts a currency parameter and shows the final price in it.
+- Existing behaviour (no currency requested) defaults to USD.
+
+--- ATTACHMENTS ---
+
+[example-response.json]
+{ "memberId": "M123", "name": "Jane Doe", "loyaltyTier": "GOLD" }
+
+
+
+CANDIDATE REPOSITORIES:
+### repo: inventory-service  (ref: main)
+contracts_found: True
+contract_content:
+# api/inventory.yaml
+openapi: 3.0.3
+info:
+  title: inventory-service API
+  version: v1
+  description: >
+    Middle tier. Consumes pricing-service, applies discountTier to compute
+    effective price, and exposes stock + availability to book-service.
+servers:
+  - url: http://localhost:8082
+paths:
+  /inventory/{bookId}:
+    get:
+      summary: Get stock and effective price for a book
+      operationId: getInventory
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Inventory found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inventory'
+        '404':
+          description: Book not stocked or not priced
+components:
+  schemas:
+    Inventory:
+      type: object
+      required: [bookId, stock, available, effectivePrice, currency]
+      properties:
+        bookId:
+          type: string
+          example: B001
+        stock:
+          type: integer
+          example: 12
+        available:
+          type: boolean
+          example: true
+        effectivePrice:
+          type: number
+          format: double
+          description: Price after applying the discountTier from pricing-service.
+          example: 29.99
+        currency:
+          type: string
+          example: USD
+
+
+### repo: pricing-service  (ref: main)
+contracts_found: True
+contract_content:
+# api/pricing.yaml
+openapi: 3.0.3
+info:
+  title: pricing-service API
+  version: v1
+  description: Leaf provider. Owns book pricing and the discountTier field.
+servers:
+  - url: http://localhost:8083
+paths:
+  /pricing/{bookId}:
+    get:
+      summary: Get price for a book
+      operationId: getPrice
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Price found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Price'
+        '404':
+          description: Book not priced
+components:
+  schemas:
+    Price:
+      type: object
+      required: [bookId, basePrice, currency, discountTier]
+      properties:
+        bookId:
+          type: string
+          example: B001
+        basePrice:
+          type: number
+          format: double
+          example: 29.99
+        currency:
+          type: string
+          example: USD
+        discountTier:
+          type: string
+          description: Pricing tier used downstream to compute effective price.
+          enum: [STANDARD, PREMIUM]
+          example: STANDARD
+
+
+### repo: book-service  (ref: main)
+contracts_found: True
+contract_content:
+# api/book.yaml
+openapi: 3.0.3
+info:
+  title: book-service API
+  version: v1
+  description: >
+    Top consumer. Combines catalog info with availability and final price from
+    inventory-service.
+servers:
+  - url: http://localhost:8081
+paths:
+  /books/{bookId}:
+    get:
+      summary: Get full book detail
+      operationId: getBook
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Book found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookDetail'
+        '404':
+          description: Book not in catalog or unavailable downstream
+components:
+  schemas:
+    BookDetail:
+      type: object
+      required: [bookId, title, author, available, finalPrice, currency]
+      properties:
+        bookId:
+          type: string
+          example: B001
+        title:
+          type: string
+          example: The Reactive Manifesto
+        author:
+          type: string
+          example: A. Bonér
+        available:
+          type: boolean
+          example: true
+        finalPrice:
+          type: number
+          format: double
+          example: 29.99
+        currency:
+          type: string
+          example: USD
+
+
+
+CODE-SIGNAL EVIDENCE (how consumers call providers, from
+shallow-clone + grep at the analysis branch):
+- inventory-service -> pricing-service: webclient_call '/pricing/{bookId}' (src/main/java/com/bcbsm/inventory/PricingClient.java:18)
+- book-service -> inventory-service: webclient_call '/inventory/{bookId}' (src/main/java/com/bcbsm/book/InventoryClient.java:18)
+
+CHANGE-TYPE (deterministic pre-classification): contract (behavioural=True).
+story shows behavioural/semantic signals; a value's meaning may change without an API-shape change, so contract-only evidence is insufficient — verify functional impact per repo.
+If behavioural, a provider's value semantics may change WITHOUT an API-shape change — do not rely on contract diff alone; use the code-signal evidence and lower confidence if the impact can't be confirmed from shape.
+
+Return JSON with EXACTLY this shape:
+{
+  "provider": {"repo": "", "contract": "", "contract_version": ""},
+  "consumers": [{"repo": "", "evidence": ""}],
+  "potentially_affected": [{"repo": "", "reason": ""}],
+  "dependencies": [{"from": "", "to": ""}],
+  "contract_change": {"type": "backward_compatible|breaking|unknown"},
+  "confidence": 0,
+  "clarifications_needed": ["grounded blocking question strings"],
+  "assumptions": ["explicit assumption strings for non-blocking gaps"],
+  "evidence": ["short bullet strings"]
+}
+----------------------------------------------------------------------
+  FULL RESPONSE (parsed):
+----------------------------------------------------------------------
+{
+  "provider": {
+    "repo": "pricing-service",
+    "contract": "api/pricing.yaml",
+    "contract_version": "v1"
+  },
+  "consumers": [
+    {
+      "repo": "inventory-service",
+      "evidence": "InventoryClient calls pricing-service at /pricing/{bookId}; story says it must forward requested currency and compute effective price in that currency."
+    },
+    {
+      "repo": "book-service",
+      "evidence": "InventoryClient calls inventory-service at /inventory/{bookId}; story says book-service must accept a currency parameter and surface final price in it."
+    }
+  ],
+  "potentially_affected": [],
+  "dependencies": [
+    {
+      "from": "inventory-service",
+      "to": "pricing-service"
+    },
+    {
+      "from": "book-service",
+      "to": "inventory-service"
+    }
+  ],
+  "contract_change": {
+    "type": "backward_compatible"
+  },
+  "confidence": 0.79,
+  "clarifications_needed": [],
+  "assumptions": [
+    "Currency is introduced as an optional parameter on the existing GET flows, with USD remaining the default when omitted.",
+    "The pricing-service currency change is semantic/behavioral rather than a response-shape break, since the snapshot already includes a currency field in Price."
+  ],
+  "evidence": [
+    "pricing-service owns the pricing contract and exposes /pricing/{bookId} with Price including currency and discountTier.",
+    "inventory-service is a direct consumer of pricing-service via webclient_call '/pricing/{bookId}'.",
+    "book-service is a direct consumer of inventory-service via webclient_call '/inventory/{bookId}'.",
+    "Story impact propagates top-down: pricing-service -> inventory-service -> book-service."
+  ]
+}
+----------------------------------------------------------------------
+
+======================================================================
+[15:43:37] STAGE: 8. CLARIFICATION GATE
+======================================================================
+  confidence: 0.79
+  threshold: 0.7
+  clarifications_needed: (0)
+  assumptions: (2)
+      - Currency is introduced as an optional parameter on the existing GET flows, with USD remaining the default when omitted.
+      - The pricing-service currency change is semantic/behavioral rather than a response-shape break, since the snapshot already includes a currency field in Price.
+  status: PROPOSED

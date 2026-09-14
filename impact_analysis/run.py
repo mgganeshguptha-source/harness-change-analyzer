@@ -44,7 +44,14 @@ def cmd_analyze(args) -> int:
     story = story_input.as_story_dict()
 
     reasoner = get_reasoner(args.reasoning)
-    cs = analyze(story, args.registry, args.owner, reasoner=reasoner)
+    # debug log sits next to the change set: <story>.debug.log
+    debug_path = None
+    if story.get("debug"):
+        import os as _os
+        out_dir = _os.path.dirname(args.out) or "."
+        debug_path = _os.path.join(out_dir, f"{args.story_id}.debug.log")
+    cs = analyze(story, args.registry, args.owner, reasoner=reasoner,
+                 debug_path=debug_path)
     with open(args.out, "w", encoding="utf-8") as fh:
         yaml.safe_dump(cs, fh, sort_keys=False)
     conf = cs["change_set"]["analysis"]["confidence"]
@@ -52,6 +59,8 @@ def cmd_analyze(args) -> int:
           f"(branches from analysis_target_branch.yaml)")
     print(f"[analyze] PROPOSED change set written: {args.out} "
           f"(confidence={conf})")
+    if debug_path:
+        print(f"[analyze] debug trace written: {debug_path}")
     print("[analyze] Review, set status: APPROVED (or edit consumers), "
           "then run 'manifest'.")
     return 0

@@ -1,0 +1,91 @@
+change_set:
+  story: BCBSM-1234
+  title: Add PLATINUM discount tier to pricing
+  branch_default: main
+  branch_overrides: {}
+  description: 'Extend the pricing-service discountTier to support a new PLATINUM
+    tier in
+
+    addition to STANDARD and PREMIUM. inventory-service must apply the PLATINUM
+
+    tier when computing effectivePrice, and book-service must reflect the resulting
+
+    finalPrice. No breaking changes to existing tiers.
+
+
+    Acceptance criteria:
+
+    - pricing-service: discountTier enum includes PLATINUM.
+
+    - inventory-service: effectivePrice correctly applies PLATINUM.
+
+    - book-service: finalPrice reflects the PLATINUM-adjusted price.
+
+
+    --- ATTACHMENTS ---
+
+
+    [example-response.json]
+
+    { "memberId": "M123", "name": "Jane Doe", "loyaltyTier": "GOLD" }
+
+
+    '
+  feature_branch: feature/BCBSM-1234-add-platinum-discount-tier-to-pricing
+  status: APPROVED
+  analysis:
+    engine: copilot-sdk
+    model: gpt-5.4-mini
+    confidence: 0.89
+    analyzed_refs:
+      inventory-service: main
+      pricing-service: main
+      book-service: main
+    all_repo_refs:
+      inventory-service: main
+      pricing-service: main
+      book-service: main
+    shortlist_widened: true
+    shortlist_scores:
+    - repo: inventory-service
+      score: 1
+      matched:
+      - inventory
+    - repo: pricing-service
+      score: 1
+      matched:
+      - pricing
+    - repo: book-service
+      score: 0
+      matched: []
+    evidence:
+    - pricing-service owns discountTier and currently enumerates STANDARD and PREMIUM
+      in api/pricing.yaml.
+    - inventory-service explicitly consumes pricing-service and computes effectivePrice
+      from discountTier.
+    - book-service depends on inventory-service final price, but the impacted contract
+      is indirect rather than direct.
+  provider:
+    repo: pricing-service
+    contract: api/pricing.yaml
+    contract_version: v1
+  consumers:
+  - repo: inventory-service
+    evidence: api/inventory.yaml says it consumes pricing-service and applies discountTier
+      to compute effectivePrice; adding PLATINUM changes the pricing contract it uses.
+  potentially_affected:
+  - repo: book-service
+    reason: api/book.yaml consumes inventory-service final price; the downstream price
+      may change when inventory-service handles PLATINUM, but this repo does not use
+      discountTier directly.
+  dependencies:
+  - from: pricing-service
+    to: inventory-service
+  - from: inventory-service
+    to: book-service
+  contract_change:
+    type: backward_compatible
+  options:
+    merge: manual
+    contract_gate: required
+    parallel: true

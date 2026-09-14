@@ -45,6 +45,10 @@ class StoryInput:
     model: str | None = None                  # optional model override (frontmatter)
     branch_default: str = ""                   # from analysis_target_branch.yaml
     branch_overrides: dict = field(default_factory=dict)   # repo -> branch
+    cap: int | None = None                     # shortlist cap (optional)
+    min_candidates: int | None = None          # widen threshold (optional)
+    debug: bool = False                        # per-story debug trace toggle
+    clarify_threshold: float | None = None     # confidence gate (default 0.7)
     attachments_text: dict = field(default_factory=dict)   # name -> content
     attachments_listed: list = field(default_factory=list)  # names only (binary)
 
@@ -64,6 +68,10 @@ class StoryInput:
             "description": desc,
             "branch_default": self.branch_default,
             "branch_overrides": self.branch_overrides,
+            "cap": self.cap,
+            "min_candidates": self.min_candidates,
+            "debug": self.debug,
+            "clarify_threshold": self.clarify_threshold,
             "model": self.model,
         }
 
@@ -116,6 +124,10 @@ class RepoFolderProvider(StoryProvider):
             btree = yaml.safe_load(fh) or {}
         branch_default = btree.get("default")
         branch_overrides = btree.get("overrides", {}) or {}
+        cap = btree.get("cap")
+        min_candidates = btree.get("min_candidates")
+        debug = bool(btree.get("debug", False))
+        clarify_threshold = btree.get("clarify_threshold")
         if not branch_default:
             raise ValueError(
                 f"{atb} must set 'default:' (the branch to analyze repos at "
@@ -144,6 +156,10 @@ class RepoFolderProvider(StoryProvider):
             model=meta.get("model"),
             branch_default=branch_default,
             branch_overrides=branch_overrides,
+            cap=cap,
+            min_candidates=min_candidates,
+            debug=debug,
+            clarify_threshold=clarify_threshold,
             attachments_text=text_attach,
             attachments_listed=listed,
         )

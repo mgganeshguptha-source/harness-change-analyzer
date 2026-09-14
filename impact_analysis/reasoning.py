@@ -83,6 +83,8 @@ def mock_reason(prompt: str, model: str | None = None, parse: bool = True):
         ],
         "contract_change": {"type": "backward_compatible"},
         "confidence": 80,
+        "clarifications_needed": [],
+        "assumptions": ["MOCK: assumed standard provider/consumer roles"],
         "evidence": [
             "MOCK reasoning — replace by setting HARNESS_REASONING=copilot",
             f"provider inferred as first candidate repo: {provider}",

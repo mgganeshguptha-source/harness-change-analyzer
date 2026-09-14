@@ -9,6 +9,15 @@
 #               the current release (read those at the in-flight dev branch,
 #               e.g. PM_Sep, so analysis sees the predecessor change).
 #
+# Optional shortlist tuning (per story):
+#   cap             — max candidate repos sent to the LLM (default 10).
+#   min_candidates  — if fewer than this score > 0, widen to all repos (default 3).
+#
+# Optional debug (per story):
+#   debug: true     — write a full per-stage trace (terms, scores, evidence,
+#                     full LLM prompt+response) to the Actions log AND to
+#                     change-sets/<story>.debug.log. Default false.
+#
 # Analysis hard-fails (listing every offender) if any resolved branch is
 # missing in its repo.
 
@@ -16,3 +25,7 @@ default: main            # production baseline for untouched repos
 
 overrides:
   # pricing-service: PM_Sep      # example: already changed this release
+
+# cap: 5
+# min_candidates: 3
+# debug: true

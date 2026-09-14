@@ -104,16 +104,38 @@ jobs:
           CS_PATH: "story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml"
         run: |
           python - <<'PY'
-          import yaml, os
+          import yaml, os, sys
           p = os.environ["CS_PATH"]
           d = yaml.safe_load(open(p))
+          status = d["change_set"].get("status")
+          if status == "NEEDS_CLARIFICATION":
+              a = d["change_set"].get("analysis", {})
+              print("::warning:: Analysis needs clarification — plan will be "
+                    "skipped. Answer the questions in the story and re-run.")
+              print("Confidence:", a.get("confidence"),
+                    "Threshold:", a.get("clarify_threshold"))
+              for q in a.get("clarifications_needed", []):
+                  print("  Q:", q)
+              # leave status as NEEDS_CLARIFICATION; do not approve
+              sys.exit(0)
           d["change_set"]["status"] = "APPROVED"
           yaml.safe_dump(d, open(p, "w"), sort_keys=False)
           print("status set APPROVED for plan generation")
           PY
 
       # 5. PLAN — per-repo stories + PLAN.md, written under the story branch.
+      #    Skipped when analysis needs clarification (status not APPROVED).
+      - name: Check status before plan
+        id: gate
+        env:
+          CS_PATH: "story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml"
+        run: |
+          STATUS=$(python -c "import yaml,os;print(yaml.safe_load(open(os.environ['CS_PATH']))['change_set'].get('status'))")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "change set status: $STATUS"
+
       - name: Plan
+        if: steps.gate.outputs.status == 'APPROVED'
         env:
           GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
@@ -152,4 +174,5 @@ jobs:
           if-no-files-found: ignore
           path: |
             story-branch/change-sets/${{ inputs.story_id }}.changeset.yaml
+            story-branch/change-sets/${{ inputs.story_id }}.debug.log
             story-branch/stories/${{ inputs.story_id }}/per-repo/

@@ -73,7 +73,8 @@ description:
 
 THIS REPO:
 name: {repo}
-role: {role}            # provider owns the contract; consumer adapts to it
+role: {role}            # provider owns; consumer adapts; potentially_affected
+                        # = downstream/indirect — verify if a change is needed
 contract: {contract}
 
 Write the story for THIS repo only. Include:
@@ -130,14 +131,28 @@ def _render_plan(cs: dict, waves: list[list[str]], edges: list[dict],
                  role_of: dict, story_paths: dict) -> str:
     story = cs.get("story")
     feature_id = story  # cross-repo story id == feature_id per repo (confirmed)
-    analyzed = (cs.get("analysis", {}) or {}).get("all_repo_refs", {}) or {}
+    analysis = cs.get("analysis", {}) or {}
+    analyzed = analysis.get("all_repo_refs", {}) or {}
 
     lines = [
         f"# Execution Plan — {story}",
         "",
         f"**Story:** {cs.get('title')}  ",
         f"**feature_id for every repo:** `{feature_id}`",
+        f"**Change type:** {analysis.get('change_type', 'unknown')}"
+        f"{' (behavioural)' if analysis.get('behavioural') else ''}",
         "",
+    ]
+    if analysis.get("contract_only_insufficient"):
+        lines += [
+            "> ⚠ **Contract-only evidence is INSUFFICIENT for this story.** "
+            f"{analysis.get('change_type_reason','')}",
+            "> Review functional impact carefully; a repo may be affected even if "
+            "it is not listed as a direct contract consumer. The per-repo "
+            "build-context (deep code analysis) is the backstop.",
+            "",
+        ]
+    lines += [
         "> This plan is produced by harness-change-analyzer (analysis only). A",
         "> developer/lead runs SDLC-Harness **manually** for each repo. Sequencing",
         "> is human-enforced. **You choose the `base`** (the release/dev branch to",
@@ -225,11 +240,14 @@ def generate_plan(change_set: dict, stories_root: str = "stories",
     provider = cs["provider"]["repo"]
     contract = cs["provider"].get("contract", "")
     consumers = [c["repo"] for c in cs.get("consumers", []) or []]
+    affected = [a["repo"] for a in cs.get("potentially_affected", []) or []]
     edges = cs.get("dependencies", [])
 
     role_of = {provider: "provider"}
     for c in consumers:
         role_of.setdefault(c, "consumer")
+    for a in affected:
+        role_of.setdefault(a, "potentially_affected")
 
     # 1. per-repo story files
     out_dir = os.path.join(stories_root, story, "per-repo")
@@ -243,7 +261,7 @@ def generate_plan(change_set: dict, stories_root: str = "stories",
         story_paths[repo] = path
 
     # 2. plan
-    waves = _toposort(provider, consumers, edges)
+    waves = _toposort(provider, consumers + affected, edges)
     plan_md = _render_plan(cs, waves, edges, role_of, story_paths)
     plan_path = os.path.join(out_dir, "PLAN.md")
     with open(plan_path, "w", encoding="utf-8") as fh:

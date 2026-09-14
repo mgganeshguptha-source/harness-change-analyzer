@@ -28,4 +28,4 @@ overrides:
 
 # cap: 5
 # min_candidates: 3
-# debug: true
+debug: true

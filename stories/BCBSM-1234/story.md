@@ -1,5 +1,4 @@
 ---
-story: BCBSM-2001
 title: Add currency selection to book pricing
 ---
 Allow a book's price to be requested and returned in a chosen currency.

@@ -19,14 +19,14 @@ change_set:
   analysis:
     engine: copilot-sdk
     model: default
-    confidence: 0.79
+    confidence: 0.82
     clarify_threshold: 0.7
     clarifications_needed: []
     assumptions:
-    - Currency is introduced as an optional parameter on the existing GET flows, with
-      USD remaining the default when omitted.
-    - The pricing-service currency change is semantic/behavioral rather than a response-shape
-      break, since the snapshot already includes a currency field in Price.
+    - Assume currency is an optional request parameter named currency, defaulting
+      to USD when omitted.
+    - Assume the pricing-service change is additive/semantic rather than removing
+      or renaming existing response fields.
     analyzed_refs:
       inventory-service: main
       pricing-service: main
@@ -75,24 +75,23 @@ change_set:
       line: 18
       commit: 03f0fbfdd822b5a595b2a3f0d29c941e72fd95c9
     evidence:
-    - pricing-service owns the pricing contract and exposes /pricing/{bookId} with
-      Price including currency and discountTier.
-    - inventory-service is a direct consumer of pricing-service via webclient_call
-      '/pricing/{bookId}'.
-    - book-service is a direct consumer of inventory-service via webclient_call '/inventory/{bookId}'.
-    - 'Story impact propagates top-down: pricing-service -> inventory-service -> book-service.'
+    - pricing-service contract already exposes Price.currency but no request-time
+      currency input, so the change is primarily semantic/additive.
+    - inventory-service contract exposes effectivePrice and currency and it directly
+      calls pricing-service, so it must propagate currency through the pricing hop.
+    - book-service contract exposes finalPrice and currency and it directly calls
+      inventory-service, so it must accept currency and pass it downstream.
   provider:
     repo: pricing-service
     contract: api/pricing.yaml
     contract_version: v1
   consumers:
   - repo: inventory-service
-    evidence: InventoryClient calls pricing-service at /pricing/{bookId}; story says
-      it must forward requested currency and compute effective price in that currency.
+    evidence: Calls pricing-service via webclient to /pricing/{bookId}; must forward
+      the requested currency when computing effectivePrice and currency.
   - repo: book-service
-    evidence: InventoryClient calls inventory-service at /inventory/{bookId}; story
-      says book-service must accept a currency parameter and surface final price in
-      it.
+    evidence: Calls inventory-service via webclient to /inventory/{bookId}; must accept
+      currency from its own API and surface the final priced result.
   potentially_affected: []
   dependencies:
   - from: inventory-service

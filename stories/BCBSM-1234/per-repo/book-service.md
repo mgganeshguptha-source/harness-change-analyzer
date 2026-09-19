@@ -1,9 +1,15 @@
-# Book service: surface priced books in requested currency
+# Book service: accept requested currency and return priced books in that currency
 
-Book service must accept an optional `currency` parameter on the pricing flow, consume the updated `api/pricing.yaml` contract from the provider, and return the final book price in that currency. If no currency is provided, it must preserve existing behavior by defaulting to `USD`.
+Book-service must consume the updated `api/pricing.yaml` contract from pricing-service and pass a requested currency through to pricing/inventory pricing flow, then surface the final book price in that currency.
+
+**What this repo must change**
+- Update book-service request handling to accept an optional `currency` parameter.
+- Forward the requested currency through to the pricing/inventory call chain.
+- Render the returned final price using the requested currency.
+- Keep the existing default behavior unchanged when no currency is provided.
 
 **Acceptance criteria**
-- Book service accepts a `currency` request parameter and passes it through to downstream pricing/inventory calls.
-- Book service consumes the updated `api/pricing.yaml` contract from the provider for the currency-aware price response.
-- The final response includes the price in the requested currency.
-- When no currency is requested, the response remains `USD`-based and existing behavior is unchanged.
+- book-service accepts a `currency` parameter on the relevant pricing endpoint/API flow.
+- book-service passes the requested currency through to the downstream pricing contract defined by `api/pricing.yaml`.
+- book-service shows the final price in the requested currency.
+- If no currency is provided, book-service defaults to USD and preserves current behavior.

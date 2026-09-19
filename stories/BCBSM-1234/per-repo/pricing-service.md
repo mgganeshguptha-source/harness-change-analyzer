@@ -1,10 +1,14 @@
-# Add requested currency to pricing API
+# Add requested-currency support to pricing responses
 
-Update `pricing-service` as the provider of `api/pricing.yaml` so the pricing endpoint accepts a currency request parameter and returns the price in that currency. This repo owns the contract change and must define the request/response shape for currency-aware pricing, including the default behavior when no currency is supplied.
+**Repo scope:** `pricing-service` is the provider and owns `api/pricing.yaml`; update that contract and the service implementation so price requests can specify a currency and responses return the price in that currency.
 
-## Acceptance criteria
+**What this repo must change**
+- Extend `api/pricing.yaml` to accept a currency parameter on the pricing request.
+- Update pricing logic to return the computed price in the requested currency.
+- Preserve existing behavior when no currency is provided by defaulting to USD.
 
-- `api/pricing.yaml` is updated by `pricing-service` to include a currency input for pricing requests.
-- The pricing response includes the price expressed in the requested currency.
-- When no currency is requested, the API defaults to USD.
-- The contract change is sufficient for downstream consumers to pass through and surface the currency value consistently.
+**Acceptance criteria**
+- `api/pricing.yaml` documents the currency request parameter and response shape.
+- Pricing responses include the currency used to compute the price.
+- A requested currency is honored end-to-end within pricing-service.
+- Requests without a currency continue to return USD-priced results.

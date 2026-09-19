@@ -1,6 +1,6 @@
 
 ======================================================================
-[15:43:18] STAGE: 1. STORY PARSE — extract search terms
+[16:08:43] STAGE: 1. STORY PARSE — extract search terms
 ======================================================================
   story: BCBSM-1234
   title: Add currency selection to book pricing
@@ -41,7 +41,7 @@ Acceptance criteria:
       - response
 
 ======================================================================
-[15:43:18] STAGE: 2. CHANGE-TYPE CLASSIFICATION (deterministic, no LLM)
+[16:08:43] STAGE: 2. CHANGE-TYPE CLASSIFICATION (deterministic, no LLM)
 ======================================================================
   change_type: contract
   behavioural: True
@@ -52,7 +52,7 @@ Acceptance criteria:
   reason: story shows behavioural/semantic signals; a value's meaning may change without an API-shape change, so contract-only evidence is insufficient — verify functional impact per repo.
 
 ======================================================================
-[15:43:18] STAGE: 3. BRANCH RESOLUTION + EXISTENCE CHECK
+[16:08:43] STAGE: 3. BRANCH RESOLUTION + EXISTENCE CHECK
 ======================================================================
   resolved branch per repo:
       inventory-service = main
@@ -61,14 +61,14 @@ Acceptance criteria:
   all branches exist: yes
 
 ======================================================================
-[15:43:18] STAGE: 4. DERIVE-ON-READ (contracts at each branch, no LLM)
+[16:08:43] STAGE: 4. DERIVE-ON-READ (contracts at each branch, no LLM)
 ======================================================================
   inventory-service: contracts_found=True, signals=4
   pricing-service: contracts_found=True, signals=5
   book-service: contracts_found=True, signals=5
 
 ======================================================================
-[15:43:18] STAGE: 5. LEXICAL SHORTLIST (term overlap, no LLM)
+[16:08:43] STAGE: 5. LEXICAL SHORTLIST (term overlap, no LLM)
 ======================================================================
   cap: 10
   min_candidates: 3
@@ -83,7 +83,7 @@ Acceptance criteria:
       - book-service
 
 ======================================================================
-[15:43:19] STAGE: 6. CODE-SIGNAL SCAN (shallow clone + grep, candidates only)
+[16:08:44] STAGE: 6. CODE-SIGNAL SCAN (shallow clone + grep, candidates only)
 ======================================================================
   scan enabled: True
   attributed edges: (2)
@@ -91,7 +91,7 @@ Acceptance criteria:
       - book-service -> inventory-service: webclient_call '/inventory/{bookId}' (src/main/java/com/bcbsm/book/InventoryClient.java:18)
 
 ======================================================================
-[15:43:19] STAGE: 7. LLM REASONING (Copilot)
+[16:08:44] STAGE: 7. LLM REASONING (Copilot)
 ======================================================================
   model: default
   FULL PROMPT:
@@ -351,11 +351,11 @@ Return JSON with EXACTLY this shape:
   "consumers": [
     {
       "repo": "inventory-service",
-      "evidence": "InventoryClient calls pricing-service at /pricing/{bookId}; story says it must forward requested currency and compute effective price in that currency."
+      "evidence": "Calls pricing-service via webclient to /pricing/{bookId}; must forward the requested currency when computing effectivePrice and currency."
     },
     {
       "repo": "book-service",
-      "evidence": "InventoryClient calls inventory-service at /inventory/{bookId}; story says book-service must accept a currency parameter and surface final price in it."
+      "evidence": "Calls inventory-service via webclient to /inventory/{bookId}; must accept currency from its own API and surface the final priced result."
     }
   ],
   "potentially_affected": [],
@@ -372,28 +372,27 @@ Return JSON with EXACTLY this shape:
   "contract_change": {
     "type": "backward_compatible"
   },
-  "confidence": 0.79,
+  "confidence": 0.82,
   "clarifications_needed": [],
   "assumptions": [
-    "Currency is introduced as an optional parameter on the existing GET flows, with USD remaining the default when omitted.",
-    "The pricing-service currency change is semantic/behavioral rather than a response-shape break, since the snapshot already includes a currency field in Price."
+    "Assume currency is an optional request parameter named currency, defaulting to USD when omitted.",
+    "Assume the pricing-service change is additive/semantic rather than removing or renaming existing response fields."
   ],
   "evidence": [
-    "pricing-service owns the pricing contract and exposes /pricing/{bookId} with Price including currency and discountTier.",
-    "inventory-service is a direct consumer of pricing-service via webclient_call '/pricing/{bookId}'.",
-    "book-service is a direct consumer of inventory-service via webclient_call '/inventory/{bookId}'.",
-    "Story impact propagates top-down: pricing-service -> inventory-service -> book-service."
+    "pricing-service contract already exposes Price.currency but no request-time currency input, so the change is primarily semantic/additive.",
+    "inventory-service contract exposes effectivePrice and currency and it directly calls pricing-service, so it must propagate currency through the pricing hop.",
+    "book-service contract exposes finalPrice and currency and it directly calls inventory-service, so it must accept currency and pass it downstream."
   ]
 }
 ----------------------------------------------------------------------
 
 ======================================================================
-[15:43:37] STAGE: 8. CLARIFICATION GATE
+[16:09:19] STAGE: 8. CLARIFICATION GATE
 ======================================================================
-  confidence: 0.79
+  confidence: 0.82
   threshold: 0.7
   clarifications_needed: (0)
   assumptions: (2)
-      - Currency is introduced as an optional parameter on the existing GET flows, with USD remaining the default when omitted.
-      - The pricing-service currency change is semantic/behavioral rather than a response-shape break, since the snapshot already includes a currency field in Price.
+      - Assume currency is an optional request parameter named currency, defaulting to USD when omitted.
+      - Assume the pricing-service change is additive/semantic rather than removing or renaming existing response fields.
   status: PROPOSED

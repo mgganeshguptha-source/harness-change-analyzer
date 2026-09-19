@@ -1,15 +1,14 @@
-# Forward requested currency through effective price calculation
+# Forward requested currency through inventory pricing
 
-Update `inventory-service` to consume the changed `api/pricing.yaml` contract from the provider and pass the requested currency through when resolving the effective price.
+Inventory-service must consume the updated `api/pricing.yaml` contract from pricing-service and pass the requested currency through when computing the effective price for a book.
 
-**This repo must change**
-- Accept the currency value on the inventory pricing flow.
-- Forward that currency unchanged to pricing-service via the updated `api/pricing.yaml` contract.
-- Compute and return the effective price in the requested currency.
-- Preserve existing behavior by defaulting to USD when no currency is provided.
+**What this repo must change**
+- Update inventory-service to accept the currency value provided by the caller/path/query used for pricing.
+- Forward that currency to pricing-service when resolving price data.
+- Compute and return the effective price using the requested currency, without changing the default behavior when no currency is provided.
 
 **Acceptance criteria**
-- `inventory-service` uses the updated `api/pricing.yaml` contract from pricing-service.
-- The requested currency is forwarded end-to-end in inventory pricing calls.
-- Effective price calculations use the requested currency.
-- Requests without a currency still resolve in USD.
+- Inventory-service consumes the changed `api/pricing.yaml` contract from pricing-service.
+- Requested currency is forwarded end-to-end in inventory-service price resolution.
+- Effective price returned by inventory-service uses the requested currency.
+- If no currency is provided, inventory-service continues to default to USD.
